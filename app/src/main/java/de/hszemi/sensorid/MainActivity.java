@@ -42,6 +42,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private int counter = -1;
     private int numberOfLoops = 20;
     private TextView mTextCounter;
+    private EditText mEditText;
 
 
     @Override
@@ -56,7 +57,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         mSensors = new LinkedList<>();
         mAllSensors = new LinkedList<>();
         mLogmap = new HashMap<>();
-        final EditText editText = (EditText) findViewById(R.id.editText);
+        mEditText = (EditText) findViewById(R.id.editText);
         mTextCounter = (TextView) findViewById(R.id.textCounter);
 
         sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
@@ -94,7 +95,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
-                                gatherSensorData(s, view, editText.getText().toString());
+                                gatherSensorData(s, view, mEditText.getText().toString());
                             }
                         }, i * mSensors.size() * 6000 + k * 6000);
                         k++;
@@ -224,6 +225,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //        for (Sensor s : mAccelerometers) {
 //            mSensorManager.registerListener(this, s, SensorManager.SENSOR_DELAY_NORMAL);
 //        }
+        if(mEditText != null) {
+            mEditText.setText(sharedPref.getString(SettingsActivity.KEY_TARGET_IP_ADDRESS, "192.168.1.11"));
+        }
     }
 
     @Override
