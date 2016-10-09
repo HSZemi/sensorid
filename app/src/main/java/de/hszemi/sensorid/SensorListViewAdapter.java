@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Created by zemanek on 06.07.16.
+ * Adapter for displaying Sensors in a ListView
  */
 public class SensorListViewAdapter extends ArrayAdapter<Sensor> {
     public SensorListViewAdapter(Context context, List<Sensor> users) {

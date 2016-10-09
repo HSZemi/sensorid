@@ -43,6 +43,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private int numberOfLoops = 20;
     private TextView mTextCounter;
     private EditText mEditText;
+    private boolean locked = false;
 
 
     @Override
@@ -76,35 +77,67 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         });
 
 
+        // This button triggers data collection and reporting
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(final View view) {
-                //vibrateAndRecordAcceleration(view, editText.getText().toString());
+        if(fab != null){
+            fab.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(final View view) {
 
-                numberOfLoops = Integer.parseInt(sharedPref.getString(SettingsActivity.KEY_NUMBER_OF_CYCLES, "20"));
+                    if(locked){
+                        Snackbar.make(view, "Do not double touch please. We are still collecting.", Snackbar.LENGTH_LONG)
+                                .setAction("Action", null).show();
+                    } else {
+                        // "lock" the application in order to prevent overlapping data collection
+                        locked = true;
 
-                counter = numberOfLoops*mSensors.size();
-                mTextCounter.setText(""+counter);
+                        // get the number of cycles from the settings
+                        numberOfLoops = Integer.parseInt(sharedPref.getString(SettingsActivity.KEY_NUMBER_OF_CYCLES, "20"));
 
-                for(int i = 0; i < numberOfLoops; i++){
-                    int k = 0;
-                    for (final Sensor s : mSensors) {
+                        counter = numberOfLoops * mSensors.size();
+                        mTextCounter.setText("" + counter);
+
+                        // post all the collection handlers at the corresponding point in time
+                        for (int i = 0; i < numberOfLoops; i++) {
+                            int k = 0;
+                            for (final Sensor s : mSensors) {
+                                Handler handler = new Handler();
+                                Log.d("handler", "Posting sensor in " + (i * mSensors.size() * 6000 + k * 6000) + "ms");
+                                handler.postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        gatherSensorData(s, view, mEditText.getText().toString());
+                                    }
+                                }, i * mSensors.size() * 6000 + k * 6000);
+                                k++;
+
+                            }
+                        }
+
+                        final Snackbar snackbar = Snackbar.make(view, "Collecting and reporting Data. This will take approx. "+(6*counter)+" seconds.", Snackbar.LENGTH_INDEFINITE)
+                                .setAction("Action", null);
+                        snackbar.show();
+
+                        // post last handler that will:
+                        // - remove the snackbar
+                        // - unlock the application again
                         Handler handler = new Handler();
-                        Log.d("handler", "Posting sensor in " + (i * mSensors.size() * 6000 + k * 6000) + "ms");
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
-                                gatherSensorData(s, view, mEditText.getText().toString());
+                                snackbar.dismiss();
+                                locked = false;
                             }
-                        }, i * mSensors.size() * 6000 + k * 6000);
-                        k++;
+                        }, counter*6000);
 
                     }
                 }
-            }
-        });
+            });
+        }
 
+        // we build two lists with sensors:
+        // - mAllSensors contains all available sensors,
+        // - mSensors contains the sensor types we generally select for examination
         mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         List<Sensor> sensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
         for (Sensor s : sensors) {
@@ -121,84 +154,62 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     }
 
-    private void vibrateAndRecordAcceleration(final View view, final String target) {
-        Vibrator vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
-        if (vibrator != null) {
-            Log.d("Action", "Registering Sensor Listeners");
-            for (Sensor s : mAccelerometers) {
-                mSensorManager.registerListener((MainActivity) view.getContext(), s, SensorManager.SENSOR_DELAY_FASTEST);
-            }
-            //long[] pattern = {3000, 1000, 1000, 2000, 2000, 1000, 1000, 2000};
-            long[] pattern = {100, 5000};
-            //long[] pattern = {4000};
-            long totalDuration = 0;
-            for (long l : pattern) {
-                totalDuration += l;
-            }
-            vibrator.vibrate(pattern, -1);
-            Log.d("Action", "Unregistering Sensor Listeners");
-            final Handler handler = new Handler();
-
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    for (Sensor s : mAccelerometers) {
-                        mSensorManager.unregisterListener((MainActivity) view.getContext(), s);
-                        reportLogmap(target, s.getName());
-                    }
-                }
-            }, totalDuration + 100);
-
-        } else {
-            Snackbar.make(view, "Unfortunately, there is no vibrator.", Snackbar.LENGTH_LONG)
-                    .setAction("Action", null).show();
-        }
-    }
-
+    /**
+     * Gather sensor data from a sensor for 5s and put it into mLogmap
+     * Then trigger the reporting.
+     * */
     private void gatherSensorData(final Sensor s, final View view, final String target) {
 
         Log.d("status", "I am now gathering data from: "+s.getName());
-        if(mLogmap.containsKey(s.getName())){
-            Snackbar.make(view, "Do not doubl touch plz", Snackbar.LENGTH_LONG)
-                    .setAction("Action", null).show();
-        } else {
-            String display_name = sharedPref.getString(SettingsActivity.KEY_DISPLAY_NAME, "John Doe");
-            mLogmap.put(s.getName(), SensorData.SensorDataMessage.newBuilder().setDisplayname(display_name).setSensorname(s.getName()));
-            mSensorManager.registerListener((MainActivity) view.getContext(), s, SensorManager.SENSOR_DELAY_FASTEST);
 
-            Handler handler = new Handler();
-            Log.d("status", "Handlering! "+s.getName());
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    mSensorManager.unregisterListener((MainActivity) view.getContext(), s);
-                    Log.d("status", "Reporting! "+s.getName());
-                    reportLogmap(target, s.getName());
-                    counter--;
-                    mTextCounter.setText(""+counter);
-                }
-            }, 5000);
-        }
+        // retrieve the device id from the settings
+        String display_name = sharedPref.getString(SettingsActivity.KEY_DISPLAY_NAME, "John Doe");
+
+        mLogmap.put(s.getName(), SensorData.SensorDataMessage.newBuilder().setDisplayname(display_name).setSensorname(s.getName()));
+        mSensorManager.registerListener((MainActivity) view.getContext(), s, SensorManager.SENSOR_DELAY_FASTEST);
+
+        Handler handler = new Handler();
+        Log.d("status", "Handlering! "+s.getName());
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                mSensorManager.unregisterListener((MainActivity) view.getContext(), s);
+                Log.d("status", "Reporting! "+s.getName());
+                reportLogmap(target, s.getName());
+
+                // update the counter
+                counter--;
+                mTextCounter.setText(""+counter);
+            }
+        }, 5000);
+
+
     }
 
+    /**
+     * Take data for id from mLogmap and report the data.
+     * */
     private void reportLogmap(String target, String id) {
+        // Take the data from mLogmap
         SensorData.SensorDataMessage.Builder data = mLogmap.get(id);
         mLogmap.remove(id);
-        DataReporter dataReporter = new DataReporter(data.build(), target);
+
+        // Send the data to the server using the DataReporter
+        DataReporter dataReporter = new DataReporter(data.build(), target, getApplicationContext());
         dataReporter.execute();
 
     }
 
     @Override
     public final void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // Do something here if sensor accuracy changes.
+        // Just output the change and then ignore it
         Log.d("Sensor: ", "Accuracy changed to " + accuracy);
     }
 
     @Override
     public final void onSensorChanged(SensorEvent event) {
-        //Log.d("Values: ",event.sensor.getName()+":"+event.values[0]+"-"+event.values[1]+"-"+event.values[2]);
-        // Do something with this sensor value.
+        // Build a SensorReading object that contains the recorded sensor data
+        // and add it to the SensorDataMessage
         SensorData.SensorDataMessage.Builder builder = mLogmap.get(event.sensor.getName());
         if (builder == null) {
             Log.e("builder", "builder for " + event.sensor.getName() + " is null!");
@@ -222,11 +233,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     protected void onResume() {
         super.onResume();
-//        for (Sensor s : mAccelerometers) {
-//            mSensorManager.registerListener(this, s, SensorManager.SENSOR_DELAY_NORMAL);
-//        }
+        // reset the target server address to the one from the settings
         if(mEditText != null) {
-            mEditText.setText(sharedPref.getString(SettingsActivity.KEY_TARGET_IP_ADDRESS, "192.168.1.11"));
+            mEditText.setText(sharedPref.getString(SettingsActivity.KEY_TARGET_IP_ADDRESS, "172.16.1.100"));
         }
     }
 
